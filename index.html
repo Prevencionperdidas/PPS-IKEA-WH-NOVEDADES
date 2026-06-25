@@ -619,7 +619,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="del-modal-sub">Ingresa tu nombre para este turno.<br>Solo se solicitará una vez.</div>
     <label class="del-code-label">Tu nombre — OPP turno</label>
     <input type="text" id="opp-name-input" placeholder="Nombre completo"
-      style="background:var(--surface);border:2px solid var(--border);color:#fff;font-size:17px;font-weight:700;text-align:center;padding:13px;border-radius:12px;outline:none;width:100%;margin-bottom:6px;-webkit-appearance:none;transition:border-color .2s"
+      style="background:var(--surface);border:2px solid var(--border);color:#fff;font-size:17px;font-weight:700;text-align:center;padding:13px;border-radius:12px;outline:none;width:100%;margin-bottom:6px;-webkit-appearance:none;transition:border-color .2s;text-transform:uppercase"
       autocomplete="off" autocorrect="off" oninput="onOppInput()" onkeydown="if(event.key==='Enter')confirmOpp()">
     <div style="font-size:10px;color:#7dd3fc;text-align:center;min-height:16px;margin-bottom:14px" id="opp-hint"></div>
     <div class="del-actions">
@@ -753,10 +753,30 @@ document.getElementById('sel-time').value = `${String(h0).padStart(2,'0')}:${Str
 const turnLabels = { m:'☀️ MAÑANA', t:'🌤️ TARDE', n:'🌙 NOCHE' };
 const turnClasses = { m:'cm', t:'ct', n:'cn' };
 
-// ── OPP PER-TURN STATE ── (must be before onTurnChange call)
+// ── OPP PER-TURN STATE (persisted in localStorage, keyed by date+turn) ──
+// Key format: "OPP_<dd-mm-yyyy>_<turn>" → survives closing/reopening the app
+// within the SAME shift block. Changes automatically when entering a new
+// shift block (new turn) or a new day.
 const oppNames = { m: null, t: null, n: null };
 let _oppTargetTurn = null;
 let _oppCallback   = null;
+
+function todayKey() {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+}
+function oppStorageKey(turn) {
+  return `OPP_${todayKey()}_${turn}`;
+}
+function loadOppFromStorage(turn) {
+  try { return localStorage.getItem(oppStorageKey(turn)) || null; } catch(e) { return null; }
+}
+function saveOppToStorage(turn, name) {
+  try { localStorage.setItem(oppStorageKey(turn), name); } catch(e) {}
+}
+
+// Hydrate in-memory oppNames from localStorage for all 3 turns (today only)
+['m','t','n'].forEach(turn => { oppNames[turn] = loadOppFromStorage(turn); });
 
 // Auto-select shift
 const autoTurn = h0>=6&&h0<14?'m':h0>=14&&h0<22?'t':'n';
@@ -777,8 +797,6 @@ function switchTab(t) {
   });
   if (t !== 'form') renderAll();
 }
-
-// ── OPP PER-TURN STATE ──
 
 function getOppForTurn(turn) { return oppNames[turn] || null; }
 
@@ -802,14 +820,15 @@ function closeOppModal() {
 }
 
 function onOppInput() {
-  const val = document.getElementById('opp-name-input').value.trim();
+  const val = document.getElementById('opp-name-input').value.trim().toUpperCase();
   document.getElementById('btn-opp-confirm').disabled = val.length < 2;
 }
 
 function confirmOpp() {
-  const val = document.getElementById('opp-name-input').value.trim();
+  const val = document.getElementById('opp-name-input').value.trim().toUpperCase();
   if (val.length < 2) return;
   oppNames[_oppTargetTurn] = val;
+  saveOppToStorage(_oppTargetTurn, val); // persist so it survives closing the app
   setOppDisplay(val);
   document.getElementById('modal-opp').classList.add('hidden');
   if (_oppCallback) { const cb = _oppCallback; _oppCallback = null; cb(); }
@@ -830,7 +849,10 @@ function onTurnChange() {
 
   if (!turn) { setOppDisplay(null); return; }
 
-  // If OPP already known for this turn, show it; else ask once
+  // Re-check localStorage in case the day rolled over since last load
+  const stored = loadOppFromStorage(turn);
+  oppNames[turn] = stored;
+
   if (oppNames[turn]) {
     setOppDisplay(oppNames[turn]);
   } else {
@@ -1340,10 +1362,10 @@ document.getElementById('ho-has-pending').addEventListener('change', function() 
 function buildHandoffText() {
   const from   = document.getElementById('ho-from').value;
   const to     = document.getElementById('ho-to').value;
-  const agent  = document.getElementById('ho-agent').value.trim();
+  const agent  = document.getElementById('ho-agent').value.trim().toUpperCase();
   const hasPending = document.getElementById('ho-has-pending').checked;
-  const pending = document.getElementById('ho-pending').value.trim();
-  const notes  = document.getElementById('ho-notes').value.trim();
+  const pending = document.getElementById('ho-pending').value.trim().toUpperCase();
+  const notes  = document.getElementById('ho-notes').value.trim().toUpperCase();
   const date   = document.getElementById('sel-date').value;
   const list   = state[from] || [];
 
